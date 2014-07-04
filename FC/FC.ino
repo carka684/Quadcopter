@@ -1,7 +1,4 @@
-#include <MovingAvarageFilter.h>
-
-#include <RunningMedian.h>
-
+#include <PID_v1.h>
 
 
 
@@ -79,12 +76,15 @@ int16_t values[6];
 #define LED_PIN 13
 bool blinkState = false;
 uint16_t *history = ms_init(SMA);
-FastRunningMedian<unsigned int,15, 0> myMedian;
-MovingAvarageFilter movingAvarageFilter(20);
 bool virgin = true;
-uint32_t timer;
+uint32_t timer,timer2;
 double compAngleX, compAngleY;
-double gyroXangle, gyroYangle;
+double consKp=1, consKi=0.05, consKd=0.25;
+double PIDOutputX,PIDOutputY;
+double setPointX,setPointY;
+int sampleTime;
+PID PIDX(&compAngleX, &PIDOutputX, &setPointX, consKp, consKi, consKd, DIRECT);
+PID PIDY(&compAngleY, &PIDOutputY, &setPointY, consKp, consKi, consKd, DIRECT);
 void setup() {
     // join I2C bus (I2Cdev library doesn't do this automatically)
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -120,16 +120,37 @@ void setup() {
     double roll  = atan2(ay, az) * RAD_TO_DEG;
     double pitch = atan(-ax / sqrt((double) ay * ay + (double) az * az)) * RAD_TO_DEG;
     compAngleX  = roll;
-    gyroXangle = roll;
     compAngleY = pitch;
-    gyroYangle = pitch;
+    setPointX = setPointY = 0;
+    sampleTime = 5;
+    PIDX.SetSampleTime(sampleTime);
+    PIDX.SetMode(AUTOMATIC);
+    PIDX.SetOutputLimits(-125,125);
+    
+    PIDY.SetSampleTime(sampleTime);
+    PIDY.SetMode(AUTOMATIC);
+    PIDY.SetOutputLimits(-125,125);
+    pinMode(LED_PIN, OUTPUT); 
+
 }
 
 void loop() {
-
-  // read raw accel/gyro measurements from device
+  if(millis() - timer2 > sampleTime)
+  {
+    printGyro();
+    readGyro();
+    timer2 = millis();
+  }
+  if(Serial.available())
+  {
+   char c = Serial.read();
+   readSerial(c); 
+  }
+  
+}
+void readGyro()
+{
   accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-  //accelgyro.getMotion6(&values[0], &values[1], &values[2], &values[3], &values[4], &values[5]);
 
   double dt = (double)(micros() - timer) / 1000000; // Calculate delta time
   timer = micros();
@@ -141,42 +162,35 @@ void loop() {
 
   if ((roll < -90 && compAngleX > 90) || (roll > 90 && compAngleX < -90)) {
     compAngleY = roll;
-    gyroYangle = roll;
   }
   if (abs(compAngleX) > 90)
   {
     gyroXrate = -gyroXrate; 
   }
-  gyroXangle += gyroXrate * dt; // Calculate gyro angle without any filter
-  gyroYangle += gyroYrate * dt;
   
   compAngleX = 0.93 * (compAngleX + gyroXrate * dt) + 0.07 * roll; // Calculate the angle using a Complimentary filter
   compAngleY = 0.93 * (compAngleY + gyroYrate * dt) + 0.07 * pitch;
-  
-  if (gyroXangle < -180 || gyroXangle > 180){
-    gyroXangle = compAngleX;
-  }
-  if (gyroYangle < -180 || gyroYangle > 180){
-    gyroYangle = compAngleY;
-  }
-#if 0 
-  Serial.print(ax); Serial.print("\t");
-  Serial.print(ay); Serial.print("\t");
-  Serial.print(az); Serial.print("\t");
-  Serial.print(gx); Serial.print("\t");
-  Serial.print(gy); Serial.print("\t");
-  Serial.print(gz); Serial.print("\t");
-#endif
+  PIDX.Compute();
+  PIDY.Compute();
 
-  //Serial.print(roll); Serial.print("\t");
-  //Serial.print(gyroXangle); Serial.print("\t");
+
+}
+void printGyro()
+{
   Serial.print(compAngleX); Serial.print("\t");
-
-  Serial.print("\t");
-
-  //Serial.print(pitch); Serial.print("\t");
-  // Serial.print(gyroYangle); Serial.print("\t");
   Serial.print(compAngleY); Serial.print("\t");
+  Serial.print(PIDOutputX); Serial.print("\t");
+  Serial.print(PIDOutputY); Serial.print("\t");
   Serial.println();
-  delay(10);   
+}
+void readSerial(char c)
+{
+ switch (c){
+  case 'a':
+   digitalWrite(LED_PIN,0);
+   break;
+  case 'b':
+   digitalWrite(LED_PIN,1);
+   break;
+ }
 }
