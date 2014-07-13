@@ -7,9 +7,14 @@ I'm nor trying to reinvent the wheel with this project neither buy a finished wh
 
 Hardware
 =========
-Arduino Uno
-Gyro + acc: MPU-6050
-Compass: HMC5883L
+uPC: Arduino Uno
+
+Gyro + acc: MPU-6050 
+
+Compass: HMC5883L 
+
 Barometer: BMP180
+
 Communications: nrf2401
+
 
