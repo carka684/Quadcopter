@@ -80,7 +80,7 @@ function stopButton_Callback(hObject, eventdata, handles)
 % hObject    handle to stopButton (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-
+delete(instrfindall)
 
 % --- Executes on button press in startButton.
 function startButton_Callback(hObject, eventdata, handles)

@@ -1,88 +1,59 @@
 #include <PID_v1.h>
-
-
-
-// I2C device class (I2Cdev) demonstration Arduino sketch for MPU6050 class
-// 10/7/2011 by Jeff Rowberg <jeff@rowberg.net>
-// Updates should (hopefully) always be available at https://github.com/jrowberg/i2cdevlib
-//
-// Changelog:
-//      2013-05-08 - added multiple output formats
-//                 - added seamless Fastwire support
-//      2011-10-07 - initial release
-
-/* ============================================
-I2Cdev device library code is placed under the MIT license
-Copyright (c) 2011 Jeff Rowberg
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-===============================================
-*/
-
-// I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
-// for both classes must be in the include path of your project
 #include <MPU6050.h>
 #include <I2Cdev.h>
 #include <microsmooth.h>
+#include <RF24Network.h>
+#include <RF24.h>
+#include <SPI.h>
+#include <printf.h>
 
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
     #include "Wire.h"
 #endif
+/*
+ * RADIO
+ */
+RF24 radio(6,7);
+RF24Network network(radio);
+// Address of our node
+const uint16_t this_node = 1;
 
-// class default I2C address is 0x68
-// specific I2C addresses may be passed as a parameter here
-// AD0 low = 0x68 (default for InvenSense evaluation board)
-// AD0 high = 0x69
+// Address of the other node
+const uint16_t other_node = 0;
+unsigned long last_sent;
+unsigned long packets_sent;
+struct payload_t
+{
+  double angle[2];
+  double pid[2];
+};
+
+/*
+ * IMU
+ */
 MPU6050 accelgyro;
-
-//MPU6050 accelgyro(0x69); // <-- use for AD0 high
-
 int16_t ax, ay, az;
 int16_t gx, gy, gz;
 
 int16_t sums[6];
 int16_t values[6];
 
-// uncomment "OUTPUT_READABLE_ACCELGYRO" if you want to see a tab-separated
-// list of the accel X/Y/Z and then gyro X/Y/Z values in decimal. Easy to read,
-// not so easy to parse, and slow(er) over UART.
-//#define OUTPUT_READABLE_ACCELGYRO
-
-// uncomment "OUTPUT_BINARY_ACCELGYRO" to send all 6 axes of data as 16-bit
-// binary, one right after the other. This is very fast (as fast as possible
-// without compression or data loss), and easy to parse, but impossible to read
-// for a human.
-#define OUTPUT_BINARY_ACCELGYRO
-
 
 #define LED_PIN 13
 bool blinkState = false;
 uint16_t *history = ms_init(SMA);
 bool virgin = true;
-uint32_t timer,timer2;
+uint32_t timer,gyroTimer,radioTimer;
+
 double compAngleX, compAngleY;
 double consKp=1, consKi=0.05, consKd=0.25;
 double PIDOutputX,PIDOutputY;
 double setPointX,setPointY;
-int sampleTime;
+double angleVec[10]; //X - Y
+double PIDVec[10]; // X - Y 
+int sampleTime,radioTime,currentSample = 0;
 PID PIDX(&compAngleX, &PIDOutputX, &setPointX, consKp, consKi, consKd, DIRECT);
 PID PIDY(&compAngleY, &PIDOutputY, &setPointY, consKp, consKi, consKd, DIRECT);
 void setup() {
@@ -97,6 +68,11 @@ void setup() {
     // (38400 chosen because it works as well at 8MHz as it does at 16MHz, but
     // it's really up to you depending on your project)
     Serial.begin(115200);
+    
+    printf_begin();
+    SPI.begin();
+    radio.begin();
+    network.begin(/*channel*/ 90, /*node address*/ this_node);
     
     // initialize device
    // Serial.println("Initializing I2C devices...");
@@ -123,6 +99,7 @@ void setup() {
     compAngleY = pitch;
     setPointX = setPointY = 0;
     sampleTime = 5;
+    radioTime = 100;
     PIDX.SetSampleTime(sampleTime);
     PIDX.SetMode(AUTOMATIC);
     PIDX.SetOutputLimits(-125,125);
@@ -135,18 +112,40 @@ void setup() {
 }
 
 void loop() {
-  if(millis() - timer2 > sampleTime)
+  if(millis() - gyroTimer > sampleTime)
   {
-    printGyro();
+   
     readGyro();
-    timer2 = millis();
+    //printGyro();
+    sendData();
+    gyroTimer = millis();
   }
+
+  
   if(Serial.available())
   {
    char c = Serial.read();
    readSerial(c); 
   }
   
+}
+void sendData()
+{
+   network.update();
+  Serial.print("Sending...");
+  payload_t payload;
+
+  payload.angle[0] = angleVec[0];  
+  payload.angle[1] = angleVec[1]; 
+  payload.pid[0] = PIDVec[0];
+  payload.pid[1] = PIDVec[1];
+
+  RF24NetworkHeader header(/*to node*/ other_node);
+  bool ok = network.write(header,&payload,sizeof(payload));
+  if (ok)
+    Serial.println("ok.");
+  else
+    Serial.println("failed.");
 }
 void readGyro()
 {
@@ -172,8 +171,10 @@ void readGyro()
   compAngleY = 0.93 * (compAngleY + gyroYrate * dt) + 0.07 * pitch;
   PIDX.Compute();
   PIDY.Compute();
-
-
+  angleVec[0] = compAngleX;
+  angleVec[1] = compAngleY;
+  PIDVec[0] = PIDOutputX;
+  PIDVec[1] = PIDOutputY;
 }
 void printGyro()
 {
