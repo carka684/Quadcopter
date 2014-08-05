@@ -6,7 +6,7 @@
 #include <RF24.h>
 #include <SPI.h>
 #include <printf.h>
-
+#define MAX_SIZE 6
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -26,8 +26,7 @@ unsigned long last_sent;
 unsigned long packets_sent;
 struct payload_t
 {
-  double angle[2];
-  double pid[2];
+  double dataVector[MAX_SIZE];
 };
 
 /*
@@ -135,12 +134,12 @@ void sendData()
   Serial.print("Sending...");
   payload_t payload;
 
-  payload.angle[0] = angleVec[0];  
-  payload.angle[1] = angleVec[1]; 
-  payload.pid[0] = PIDVec[0];
-  payload.pid[1] = PIDVec[1];
-
-  RF24NetworkHeader header(/*to node*/ other_node);
+  payload.dataVector[0] = angleVec[0];  
+  payload.dataVector[1] = angleVec[1]; 
+  payload.dataVector[2] = PIDVec[0];
+  payload.dataVector[3] = PIDVec[1];
+  int type = 0;
+  RF24NetworkHeader header(/*to node*/ other_node,type);
   bool ok = network.write(header,&payload,sizeof(payload));
   if (ok)
     Serial.println("ok.");

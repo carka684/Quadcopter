@@ -17,7 +17,7 @@
 #include <RF24.h>
 #include <SPI.h>
 #include <printf.h>
-
+#define MAX_SIZE 6
 
 // nRF24L01(+) radio attached using Getting Started board 
 RF24 radio(6,7);
@@ -34,8 +34,7 @@ const uint16_t other_node = 1;
 // Structure of our payload
 struct payload_t
 {
-  double angle[2];
-  double pid[2];
+  double dataVector[MAX_SIZE];
 };
 double time = 0;
 int lastNumber = 0;
@@ -61,21 +60,28 @@ void loop(void)
   // Is there anything ready for us?
   while ( network.available() )
   {
-    digitalWrite(2,HIGH);
-    // If so, grab it and print it out
-    RF24NetworkHeader header;
+    readData(); 
+  }
+}
+void readData()
+{
+   RF24NetworkHeader header;
     payload_t payload;
     network.read(header,&payload,sizeof(payload));
 
-    Serial.print(payload.angle[0]);
-    Serial.print(" \t");
-    Serial.print(payload.angle[1]);
-    Serial.print(" \t");
-    Serial.print(payload.pid[0]);
-    Serial.print(" \t");
-    Serial.print(payload.pid[1]);
-    Serial.println("");
-
-  }
+    switch (header.type)
+    {
+      case 0:          
+        Serial.print(payload.dataVector[0]);
+        Serial.print(" \t");
+        Serial.print(payload.dataVector[1]);
+        Serial.print(" \t");
+        Serial.print(payload.dataVector[2]);
+        Serial.print(" \t");
+        Serial.print(payload.dataVector[3]);
+        Serial.println("");
+        break;
+    }
 }
+
 // vim:ai:cin:sts=2 sw=2 ft=cpp
