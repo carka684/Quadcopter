@@ -39,6 +39,7 @@ struct payload_t
 double time = 0;
 int lastNumber = 0;
 int missed = 0;
+int joystick;
 void setup(void)
 {
   pinMode(2,OUTPUT);
@@ -53,15 +54,33 @@ void setup(void)
 
 void loop(void)
 {
+  
   // Pump the network regularly
   network.update();
-  digitalWrite(2,LOW);
 
   // Is there anything ready for us?
-  while ( network.available() )
+  if( network.available() )
   {
     readData(); 
   }
+  int tmp = analogRead(0);
+  if(abs(joystick - tmp) > 3 && millis() - time > 50 )
+  {
+    joystick = tmp;
+    sendData(joystick);
+    time = millis();
+  }
+}
+void sendData(double data)
+{
+  network.update();
+  payload_t payload;
+
+  payload.dataVector[0] = data;  
+
+  int type = 1;
+  RF24NetworkHeader header(/*to node*/ other_node,type);
+  while(!network.write(header,&payload,sizeof(payload)));
 }
 void readData()
 {
@@ -80,6 +99,9 @@ void readData()
         Serial.print(" \t");
         Serial.print(payload.dataVector[3]);
         Serial.println("");
+        break;
+      case 1:
+        Serial.println(payload.dataVector[0]);
         break;
     }
 }

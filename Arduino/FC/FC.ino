@@ -46,6 +46,8 @@ uint16_t *history = ms_init(SMA);
 bool virgin = true;
 uint32_t timer,gyroTimer,radioTimer;
 
+int numberOfSuccess = 0;
+
 double compAngleX, compAngleY;
 double consKp=1, consKi=0.05, consKd=0.25;
 double PIDOutputX,PIDOutputY;
@@ -97,8 +99,8 @@ void setup() {
     compAngleX  = roll;
     compAngleY = pitch;
     setPointX = setPointY = 0;
-    sampleTime = 5;
-    radioTime = 100;
+    sampleTime = 10;
+    radioTime = 10;
     PIDX.SetSampleTime(sampleTime);
     PIDX.SetMode(AUTOMATIC);
     PIDX.SetOutputLimits(-125,125);
@@ -113,25 +115,23 @@ void setup() {
 void loop() {
   if(millis() - gyroTimer > sampleTime)
   {
-   
     readGyro();
-    //printGyro();
-    sendData();
     gyroTimer = millis();
   }
-
-  
-  if(Serial.available())
+  if(millis() - radioTimer > radioTime)
   {
-   char c = Serial.read();
-   readSerial(c); 
+    sendData();
+    radioTimer = millis();
   }
-  
+  network.update();
+  if( network.available() )
+  {
+    readData(); 
+  }  
 }
 void sendData()
 {
-   network.update();
-  Serial.print("Sending...");
+  network.update();
   payload_t payload;
 
   payload.dataVector[0] = angleVec[0];  
@@ -141,10 +141,42 @@ void sendData()
   int type = 0;
   RF24NetworkHeader header(/*to node*/ other_node,type);
   bool ok = network.write(header,&payload,sizeof(payload));
-  if (ok)
-    Serial.println("ok.");
+  if(!ok)
+  {
+    Serial.print("failed sendning:\t");
+    Serial.println(numberOfSuccess);
+    numberOfSuccess = 0;
+  }
   else
-    Serial.println("failed.");
+  {
+    numberOfSuccess++;
+  }
+
+}
+
+
+void readData()
+{
+   RF24NetworkHeader header;
+    payload_t payload;
+    network.read(header,&payload,sizeof(payload));
+
+    switch (header.type)
+    {
+      case 0:          
+        Serial.print(payload.dataVector[0]);
+        Serial.print(" \t");
+        Serial.print(payload.dataVector[1]);
+        Serial.print(" \t");
+        Serial.print(payload.dataVector[2]);
+        Serial.print(" \t");
+        Serial.print(payload.dataVector[3]);
+        Serial.println("");
+        break;
+      case 1:
+        //Serial.println(payload.dataVector[0]);
+        break;
+    }
 }
 void readGyro()
 {
@@ -183,14 +215,4 @@ void printGyro()
   Serial.print(PIDOutputY); Serial.print("\t");
   Serial.println();
 }
-void readSerial(char c)
-{
- switch (c){
-  case 'a':
-   digitalWrite(LED_PIN,0);
-   break;
-  case 'b':
-   digitalWrite(LED_PIN,1);
-   break;
- }
-}
+
