@@ -20,7 +20,7 @@
 #define MAX_SIZE 6
 
 // nRF24L01(+) radio attached using Getting Started board 
-RF24 radio(6,7);
+RF24 radio(7,8);
 
 // Network uses that radio
 RF24Network network(radio);
@@ -63,13 +63,20 @@ void loop(void)
   {
     readData(); 
   }
+  
+  if(Serial.available())
+  {
+    readSerial();
+  }
+  
   int tmp = analogRead(0);
   if(abs(joystick - tmp) > 3 && millis() - time > 50 )
   {
     joystick = tmp;
-    sendData(joystick);
+    //sendData(joystick);
     time = millis();
   }
+  
 }
 void sendData(double data)
 {
@@ -104,6 +111,10 @@ void readData()
         Serial.println(payload.dataVector[0]);
         break;
     }
+}
+void readSerial()
+{
+  
 }
 
 // vim:ai:cin:sts=2 sw=2 ft=cpp
