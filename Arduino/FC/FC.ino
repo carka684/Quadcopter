@@ -7,43 +7,28 @@
 #include <SPI.h>
 #include <printf.h>
 #define MAX_SIZE 6
-// Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
-// is used in I2Cdev.h
+#define CE_PIN 7
+#define CSN_PIN 8
+#define THIS_NODE 0
+#define OTHER_NODE 1
+#define TYPE_ANGLE 0 
+#define TYPE_CONTROL 1
+#define BAUD_RATE 115200
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
     #include "Wire.h"
 #endif
-/*
- * RADIO
- */
-RF24 radio(7,8);
+RF24 radio(CE_PIN,CSN_PIN);
 RF24Network network(radio);
-// Address of our node
-const uint16_t this_node = 1;
 
-// Address of the other node
-const uint16_t other_node = 0;
-unsigned long last_sent;
-unsigned long packets_sent;
 struct payload_t
 {
   double dataVector[MAX_SIZE];
 };
 
-/*
- * IMU
- */
 MPU6050 accelgyro;
 int16_t ax, ay, az;
 int16_t gx, gy, gz;
 
-int16_t sums[6];
-int16_t values[6];
-
-
-#define LED_PIN 13
-bool blinkState = false;
-uint16_t *history = ms_init(SMA);
-bool virgin = true;
 uint32_t timer,gyroTimer,radioTimer;
 
 int numberOfSuccess = 0;
@@ -64,31 +49,20 @@ void setup() {
         Fastwire::setup(400, true);
     #endif
 
-    // initialize serial communication
-    // (38400 chosen because it works as well at 8MHz as it does at 16MHz, but
-    // it's really up to you depending on your project)
-    Serial.begin(115200);
+    Serial.begin(BAUD_RATE);
     
     printf_begin();
     SPI.begin();
     radio.begin();
     network.begin(/*channel*/ 90, /*node address*/ this_node);
     
-    // initialize device
-   // Serial.println("Initializing I2C devices...");
     accelgyro.initialize();
-
-    // verify connection
-    //Serial.println("Testing device connections...");
-    //Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
-
     accelgyro.setXGyroOffset(3);
     accelgyro.setYGyroOffset(16);
     accelgyro.setZGyroOffset(31);
     accelgyro.setXAccelOffset(-554);
     accelgyro.setYAccelOffset(-1144);
     accelgyro.setZAccelOffset(1646);
-    
     
     delay(100);
     accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
@@ -155,8 +129,6 @@ void sendData()
   }
 
 }
-
-
 void readData()
 {
    RF24NetworkHeader header;
@@ -165,7 +137,7 @@ void readData()
 
     switch (header.type)
     {
-      case 0:          
+      case TYPE_ANGLE:          
         Serial.print(payload.dataVector[0]);
         Serial.print(" \t");
         Serial.print(payload.dataVector[1]);
@@ -175,7 +147,7 @@ void readData()
         Serial.print(payload.dataVector[3]);
         Serial.println("");
         break;
-      case 1:
+      case TYPE_CONTROL:
         Serial.println(payload.dataVector[0]);
         break;
     }

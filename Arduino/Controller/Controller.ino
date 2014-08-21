@@ -1,40 +1,21 @@
-/*
- Copyright (C) 2012 James Coliz, Jr. <maniacbug@ymail.com>
-
- This program is free software; you can redistribute it and/or
- modify it under the terms of the GNU General Public License
- version 2 as published by the Free Software Foundation.
- */
-
-/**
- * Simplest possible example of using RF24Network,
- *
- * RECEIVER NODE
- * Listens for messages from the transmitter and prints them out.
- */
 
 #include <RF24Network.h>
 #include <RF24.h>
 #include <SPI.h>
 #include <printf.h>
 #define MAX_SIZE 6
+#define CE_PIN 7
+#define CSN_PIN 8
+#define THIS_NODE 0
+#define OTHER_NODE 1
+#define TYPE_ANGLE 0 
+#define TYPE_CONTROL 1
 
-// nRF24L01(+) radio attached using Getting Started board 
-RF24 radio(7,8);
-
-// Network uses that radio
+RF24 radio(CE_PIN,CSN_PIN);
 RF24Network network(radio);
-
-// Address of our node
-const uint16_t this_node = 0;
-
-// Address of the other node
-const uint16_t other_node = 1;
-
-// Structure of our payload
 struct payload_t
 {
-  double dataVector[MAX_SIZE];
+	double dataVector[MAX_SIZE];
 };
 double time = 0;
 int lastNumber = 0;
@@ -42,75 +23,67 @@ int missed = 0;
 int joystick;
 void setup(void)
 {
-  pinMode(2,OUTPUT);
-  Serial.begin(115200);
-  Serial.println("RF24Network/examples/helloworld_rx/");
-      printf_begin();
+	Serial.begin(115200);
+	printf_begin();
 
-  SPI.begin();
-  radio.begin();
-  network.begin(/*channel*/ 90, /*node address*/ this_node);
+	SPI.begin();
+	radio.begin();
+	network.begin(/*channel*/ 90, /*node address*/ THIS_NODE);
 }
 
 void loop(void)
 {
-  
-  // Pump the network regularly
-  network.update();
+	network.update();
+	if(network.available())
+	{
+		readData(); 
+	}
 
-  // Is there anything ready for us?
-  if( network.available() )
-  {
-    readData(); 
-  }
-  
-  if(Serial.available())
-  {
-    readSerial();
-  }
-  
-  int tmp = analogRead(0);
-  if(abs(joystick - tmp) > 3 && millis() - time > 50 )
-  {
-    joystick = tmp;
-    //sendData(joystick);
-    time = millis();
-  }
+	if(Serial.available())
+	{
+		readSerial();
+	}
+
+	int tmp = analogRead(0);
+	if(abs(joystick - tmp) > 3 && millis() - time > 50 )
+	{
+		joystick = tmp;
+		sendData(joystick);
+		time = millis();
+	}
   
 }
 void sendData(double data)
 {
-  network.update();
-  payload_t payload;
+	network.update();
+	payload_t payload;
+	payload.dataVector[0] = data;  
 
-  payload.dataVector[0] = data;  
-
-  int type = 1;
-  RF24NetworkHeader header(/*to node*/ other_node,type);
-  while(!network.write(header,&payload,sizeof(payload)));
+	RF24NetworkHeader header(/*to node*/ OTHER_NODE,TYPE_CONTROL);
+	while(!network.write(header,&payload,sizeof(payload)));
 }
 void readData()
 {
-   RF24NetworkHeader header;
-    payload_t payload;
-    network.read(header,&payload,sizeof(payload));
+	RF24NetworkHeader header;
+	payload_t payload;
+	network.read(header,&payload,sizeof(payload));
 
-    switch (header.type)
-    {
-      case 0:          
-        Serial.print(payload.dataVector[0]);
-        Serial.print(" \t");
-        Serial.print(payload.dataVector[1]);
-        Serial.print(" \t");
-        Serial.print(payload.dataVector[2]);
-        Serial.print(" \t");
-        Serial.print(payload.dataVector[3]);
-        Serial.println("");
-        break;
-      case 1:
-        Serial.println(payload.dataVector[0]);
-        break;
-    }
+	switch (header.type)
+	{
+		case TYPE_ANGLE:          
+			Serial.print(payload.dataVector[0]);
+			Serial.print(" \t");
+			Serial.print(payload.dataVector[1]);
+			Serial.print(" \t");
+			Serial.print(payload.dataVector[2]);
+			Serial.print(" \t");
+			Serial.print(payload.dataVector[3]);
+			Serial.println("");
+		break;
+		case TYPE_CONTROL:
+			Serial.println(payload.dataVector[0]);
+		break;
+	}
 }
 void readSerial()
 {
