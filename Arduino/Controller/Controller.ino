@@ -39,7 +39,7 @@ struct payload_t
 double time = 0;
 int lastNumber = 0;
 int missed = 0;
-int joystick;
+int joystick = 0;
 void setup(void)
 {
   pinMode(2,OUTPUT);
@@ -68,12 +68,14 @@ void loop(void)
   {
     readSerial();
   }
-  
+
   int tmp = analogRead(0);
-  if(abs(joystick - tmp) > 3 && millis() - time > 50 )
+
+  if(abs(joystick - tmp) > 5 && millis() - time > 0 )
   {
     joystick = tmp;
-    //sendData(joystick);
+    Serial.println(map(tmp,0,1023,80,245));
+    sendData(joystick);
     time = millis();
   }
   
@@ -82,9 +84,9 @@ void sendData(double data)
 {
   network.update();
   payload_t payload;
-
+  data = map(data,0,1023,80,245);
   payload.dataVector[0] = data;  
-
+  Serial.println(data);
   int type = 1;
   RF24NetworkHeader header(/*to node*/ other_node,type);
   while(!network.write(header,&payload,sizeof(payload)));
