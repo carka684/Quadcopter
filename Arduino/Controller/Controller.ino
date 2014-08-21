@@ -20,7 +20,7 @@ struct payload_t
 double time = 0;
 int lastNumber = 0;
 int missed = 0;
-int joystick;
+int joystick = 0;
 void setup(void)
 {
 	Serial.begin(115200);
@@ -39,6 +39,7 @@ void loop(void)
 		readData(); 
 	}
 
+<<<<<<< HEAD
 	if(Serial.available())
 	{
 		readSerial();
@@ -51,16 +52,49 @@ void loop(void)
 		sendData(joystick);
 		time = millis();
 	}
+=======
+  // Is there anything ready for us?
+  if( network.available() )
+  {
+    readData(); 
+  }
+  
+  if(Serial.available())
+  {
+    readSerial();
+  }
+
+  int tmp = analogRead(0);
+
+  if(abs(joystick - tmp) > 5 && millis() - time > 0 )
+  {
+    joystick = tmp;
+    Serial.println(map(tmp,0,1023,80,245));
+    sendData(joystick);
+    time = millis();
+  }
+>>>>>>> origin/master
   
 }
 void sendData(double data)
 {
+<<<<<<< HEAD
 	network.update();
 	payload_t payload;
 	payload.dataVector[0] = data;  
 
 	RF24NetworkHeader header(/*to node*/ OTHER_NODE,TYPE_CONTROL);
 	while(!network.write(header,&payload,sizeof(payload)));
+=======
+  network.update();
+  payload_t payload;
+  data = map(data,0,1023,80,245);
+  payload.dataVector[0] = data;  
+  Serial.println(data);
+  int type = 1;
+  RF24NetworkHeader header(/*to node*/ other_node,type);
+  while(!network.write(header,&payload,sizeof(payload)));
+>>>>>>> origin/master
 }
 void readData()
 {

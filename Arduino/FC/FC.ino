@@ -6,6 +6,8 @@
 #include <RF24.h>
 #include <SPI.h>
 #include <printf.h>
+#include <Wire.h>
+#include "Kalman.h" 
 #define MAX_SIZE 6
 #define CE_PIN 7
 #define CSN_PIN 8
@@ -29,10 +31,24 @@ MPU6050 accelgyro;
 int16_t ax, ay, az;
 int16_t gx, gy, gz;
 
+<<<<<<< HEAD
+=======
+int16_t sums[6];
+int16_t values[6];
+
+Kalman kalmanX; // Create the Kalman instances
+Kalman kalmanY;
+
+#define LED_PIN 13
+bool blinkState = false;
+uint16_t *history = ms_init(SMA);
+bool virgin = true;
+>>>>>>> origin/master
 uint32_t timer,gyroTimer,radioTimer;
 
 int numberOfSuccess = 0;
 double compAngleRoll, compAnglePitch;
+double kalAngleX, kalAngleY;
 double consKp=1, consKi=0.05, consKd=0.25;
 double PIDOutputX,PIDOutputY;
 double setPointX,setPointY;
@@ -42,6 +58,8 @@ int sampleTime,radioTime,currentSample = 0;
 PID PIDX(&compAngleRoll, &PIDOutputX, &setPointX, consKp, consKi, consKd, DIRECT);
 PID PIDY(&compAnglePitch, &PIDOutputY, &setPointY, consKp, consKi, consKd, DIRECT);
 void setup() {
+    pinMode(0, OUTPUT); 
+    digitalWrite(0,HIGH);
     // join I2C bus (I2Cdev library doesn't do this automatically)
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
         Wire.begin();
@@ -71,9 +89,11 @@ void setup() {
     double pitch = atan(-ax / sqrt((double) ay * ay + (double) az * az)) * RAD_TO_DEG;
     compAngleRoll  = roll;
     compAnglePitch = pitch;
+    kalmanX.setAngle(roll); // Set starting angle
+    kalmanY.setAngle(pitch);
     setPointX = setPointY = 0;
     sampleTime = 10;
-    radioTime = 10;
+    radioTime = 20;
     PIDX.SetSampleTime(sampleTime);
     PIDX.SetMode(AUTOMATIC);
     PIDX.SetOutputLimits(-125,125);
@@ -81,14 +101,22 @@ void setup() {
     PIDY.SetSampleTime(sampleTime);
     PIDY.SetMode(AUTOMATIC);
     PIDY.SetOutputLimits(-125,125);
-    pinMode(LED_PIN, OUTPUT); 
+    pinMode(3, OUTPUT); 
+    analogWrite(3,80);
 
 }
 
 void loop() {
+  network.update();
+  if( network.available() )
+  {
+    readData(); 
+  } 
+  
   if(millis() - gyroTimer > sampleTime)
   {
-    readGyro();
+    //readGyro();
+    readGyroKalmann();
     gyroTimer = millis();
   }
   if(millis() - radioTimer > radioTime)
@@ -96,12 +124,7 @@ void loop() {
     sendData();
     radioTimer = millis();
   }
-  network.update();
-  if( network.available() )
-  {
-    readData(); 
-  } 
-  
+
  
   
 }
@@ -119,9 +142,9 @@ void sendData()
   bool ok = network.write(header,&payload,sizeof(payload));
   if(!ok)
   {
-    Serial.print("failed sendning:\t");
-    Serial.println(numberOfSuccess);
-    numberOfSuccess = 0;
+//    Serial.print("failed sendning:\t");
+//    Serial.println(numberOfSuccess);
+//    numberOfSuccess = 0;
   }
   else
   {
@@ -149,6 +172,8 @@ void readData()
         break;
       case TYPE_CONTROL:
         Serial.println(payload.dataVector[0]);
+        analogWrite(3,payload.dataVector[0]);
+        
         break;
     }
 }
@@ -178,6 +203,33 @@ void readGyro()
   PIDY.Compute();
   angleVec[0] = compAngleRoll;
   angleVec[1] = compAnglePitch;
+  PIDVec[0] = PIDOutputX;
+  PIDVec[1] = PIDOutputY;
+}
+void readGyroKalmann()
+{
+  accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+  double dt = (double)(micros() - timer) / 1000000; // Calculate delta time
+  timer = micros();
+  double roll  = atan2((double)  ay,(double)  az) * RAD_TO_DEG;
+  double pitch = atan(-ax / sqrt( (double)  ay * ay +  (double)  az * az)) * RAD_TO_DEG;
+  double gyroXrate = (double) gx / 131.0; // Convert to deg/s
+  double gyroYrate = (double) gy / 131.0; // Convert to deg/s
+  
+  if ((roll < -90 && kalAngleX > 90) || (roll > 90 && kalAngleX < -90)) {
+    kalmanX.setAngle(roll);
+    kalAngleX = roll;
+  } 
+  else
+    kalAngleX = kalmanX.getAngle(roll, gyroXrate, dt); // Calculate the angle using a Kalman filter
+
+  if (abs(kalAngleX) > 90)
+    gyroYrate = -gyroYrate; // Invert rate, so it fits the restriced accelerometer reading
+  kalAngleY = kalmanY.getAngle(pitch, gyroYrate, dt);
+  
+  angleVec[0] = kalAngleX;
+  angleVec[1] = kalAngleY;
   PIDVec[0] = PIDOutputX;
   PIDVec[1] = PIDOutputY;
 }
